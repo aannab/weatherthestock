@@ -1,0 +1,68 @@
+library(data.table)
+library(corrplot)
+library(dplyr)
+library(gvlma)
+library(PerformanceAnalytics)
+library(lm.beta)
+library(lubridate)
+
+weather <- fread(file="Desktop/weather project/weather.csv", header=TRUE, sep=",")
+weather
+kospi <- fread(file="Desktop/weather project/kospi.csv", header=TRUE, sep=",")
+kospi
+weather$date <- ymd(weather$date)
+kospi$date <- ymd(kospi$`년/월/일`)
+str(kospi)
+kospi <- kospi[,-c(1,3,4,5,6,7,8,9,10)]
+kospi$price <- kospi$종가
+kospi <- kospi[,-c(1)]
+str(weather)
+weather <- weather[,-c(1,6,7,8,21,22,26)]
+
+
+data <- merge(weather, kospi, by = "date")
+colnames(data)
+nrow(data)
+colSums(is.na(data))
+data$price <- as.numeric(gsub(",", "", data$price))
+plot(data$date,data$price,"l")
+plot(data$date,data$average_temp,"l")
+data <- data[,-c(1)]
+data$wind_sum <- as.numeric(data$wind_sum)
+data$min_relative_humidity <- as.numeric(data$min_relative_humidity)
+
+set.seed(1)
+data <- na.omit(data)
+colSums(is.na(data))
+nrow(data)
+
+inTrain <- createDataPartition(y=data$price, p=0.7, list=FALSE)
+trainDF <- data[inTrain , ]
+testDF  <- data[-inTrain , ]
+
+chart.Correlation(trainDF, histogram=TRUE, pch=4)
+lm.result <- lm(price~ .,data =  trainDF)
+summary(lm.result)
+
+newTrainDF <- trainDF[,c("average_temp","max_speed_windburst","max_speed_wind","average_wind","min_relative_humidity","average_relative_humidity","max_sealevel_pressure","1hour_sun","average_cloud1","average_cloud2","evaporation2","price")]
+chart.Correlation(newTrainDF, histogram=TRUE, pch=4)
+lm.result <- lm(price~ .,data =  newTrainDF)
+summary(lm.result)
+
+relativeTrainDF <- newTrainDF[,c("average_wind", "average_cloud2","evaporation2","price")]
+chart.Correlation(relativeTrainDF, histogram=TRUE, pch=4)
+lm.result <- lm(price~ .,data =  relativeTrainDF)
+summary(lm.result)
+step(lm.result, direction = "both")
+
+pred <- predict(lm.result, newdata = testDF, interval = "prediction")
+pred <- as.data.table(pred)
+pred.final <- pred
+test.final <- testDF[, price]
+pred.final$price <- test.final
+pred.final$result <- ifelse((pred.final$lwr <= pred.final$price) & (pred.final$price <= pred.final$upr), 1, 0 )
+pred.final
+table(pred.final$result)
+
+
+
